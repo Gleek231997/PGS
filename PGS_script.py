@@ -52,15 +52,15 @@ if df_raw is not None and df_skeleton is not None:
                                         highest_priority = np.inf  # Start with a very high number
                                         for response in selected_rows[question]:
                                             if pd.isna(response) or response == '':
-                                               highest_priority = -10  # Assign a high priority rank number
+                                               highest_priority = 10  # Assign a high priority rank number
                                             else:
                                                 priority_series = relevant_skeleton[relevant_skeleton['RESPONSE'] == response]['PRIORITY RANK']
                                                 priority = priority_series.iloc[0] if not priority_series.empty else np.inf
                                                 # Now compare the priority with the current highest_priority
+                                               
                                                 if priority < highest_priority:
                                                     highest_priority = priority
                                                     selected_response = response
-
                                         # Create a new row with the best response and add it to best_results_df
                                         best_row[question] = selected_response
                             
@@ -85,45 +85,68 @@ if df_raw is not None and df_skeleton is not None:
                                # Region Non Standard Question
                                 if (relevant_skeleton['Question Type'] == 'Non Standard Question').any():
                                     selected_response = None
-
                                     for response in selected_rows[question]:
                                         if (pd.isna(response) or response == '') and selected_response is None :
                                             selected_response = ''  # Choose blank if all responses are blank
+                                        elif (pd.isna(response) or response == '') and selected_response is not None:
+                                            continue
                                         else:
                                             selected_response = response
-                                  
                                     # Create a new row with the best response and add it to best_results_df
                                     best_row[question] = selected_response if selected_response is not None else ''
-
+                           
                                #Region  Dependant Questions
                                 if (relevant_skeleton['Question Type'].str.contains('Dependant Question')).any():
                                     # Ensure dependant_question is a string (assuming it's derived from splitting the 'Question Type' column)
                                     dependant_question = relevant_skeleton['Question Type'].str.split().str[0].iloc[0]
                                     dependant_columns = [col for col in best_row.index if isinstance(col, str) and col.startswith(dependant_question)]
                                     has_text = any(best_row[col] and not pd.isna(best_row[col]) for col in dependant_columns)
+                                    
                                     selected_response = None
                                     for response in selected_rows[question]:
-                                        if has_text:
+                                        if has_text or (pd.isna(response) or response == ''):
                                             continue
-                                        else:
+                                        elif response == 'None of the above' and has_text is False:
                                             selected_response = 'None of the above'
+                                        elif response == 'No thank you, I am not interested at this time' and has_text is False:
+                                            selected_response = 'No thank you, I am not interested at this time'
                                     best_row[question] = selected_response if selected_response is not None else ''
+                                   
 
                     best_results_df = pd.concat([best_results_df, best_row.to_frame().T], ignore_index=True)
                     Dupe_Ruids.append(ruid) 
+
+        # Loop through each row in best_results_df
+        for index, row in best_results_df.iterrows():
+            ruid = row['RUID']
+
+            excel_index = df_raw.index[df_raw['RUID'] == ruid]
+
+            # If matching RUID is found, update the corresponding row in the Excel DataFrame
+            if not excel_index.empty:
+                for column in best_results_df.columns:
+                    if column in df_raw.columns:  
+                        df_raw.loc[excel_index, column] = row[column]
+
+        df_raw = df_raw.sort_values(by=['RUID', 'RecordedDate'], ascending=[True, False])
+        df_raw = df_raw.drop_duplicates(subset=['RUID'], keep='first')  
+            
+        # Save the updated DataFrame back to an Excel file
+        output_file_path = "/Users/gloryekbote/Desktop/work/PGS/data/PGS_Processed_Data.xlsx"
+        df_raw.to_excel(output_file_path, sheet_name='Raw Data', index=False)
+        print(f"Updated Excel file saved at: {output_file_path}")
+
         
-        print(best_results_df)
-     
+        
+        #  # Write duplicate_df to an Excel file
+        # output_file_path = "/Users/gloryekbote/Desktop/work/PGS/data/duplicate_ruid_data.xlsx"
+        # Duplicate_data_df.to_excel(output_file_path, sheet_name='PGS data', index=False)
+        # print(f"Combined DataFrame written to {output_file_path}")
 
-         # Write duplicate_df to an Excel file
-        output_file_path = "/Users/gloryekbote/Desktop/work/PGS/data/duplicate_ruid_data.xlsx"
-        Duplicate_data_df.to_excel(output_file_path, sheet_name='PGS data', index=False)
-        print(f"Combined DataFrame written to {output_file_path}")
-
-         # Write duplicate_df to an Excel file
-        output_file_path = "/Users/gloryekbote/Desktop/work/PGS/data/Processed_data.xlsx"
-        best_results_df.to_excel(output_file_path, sheet_name='PGS data', index=False)
-        print(f"Combined DataFrame written to {output_file_path}")
+        #  # Write duplicate_df to an Excel file
+        # output_file_path = "/Users/gloryekbote/Desktop/work/PGS/data/Processed_data.xlsx"
+        # best_results_df.to_excel(output_file_path, sheet_name='PGS data', index=False)
+        #print(f"Combined DataFrame written to {output_file_path}")
 
 
 
